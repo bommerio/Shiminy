@@ -1,7 +1,9 @@
 ﻿using Shiminy.API;
 using System;
+using System.Collections.Generic;
 using System.Dynamic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 
 namespace Shiminy {
@@ -11,12 +13,13 @@ namespace Shiminy {
 
     //TODO             Shiminy.SeparateAppDomainForEachAssembly = true;
 
-
+    [Serializable]
     public class AssemblyShim {
 
-        private AppDomain _domain;
-        private string _assyName;
         private string _domainName;
+        private string _assemblyName;
+        private List<string> _assemblySearchPaths;
+        private AppDomain _domain;
 
         public event AfterLoadDelegate AfterLoad;
         public event BeforeUnloadDelegate BeforeUnload;
@@ -27,16 +30,17 @@ namespace Shiminy {
             }
         }
 
-        public AssemblyShim(string assyName) {
-            _domainName = assyName.ToLower();
-            _assyName = assyName;
+        public AssemblyShim(string assemblyName, List<string> assemblySearchPaths) {
+            _domainName = assemblyName.ToLower();
+            _assemblyName = assemblyName;
+            _assemblySearchPaths = assemblySearchPaths;
         }
 
         public dynamic New(string className) {
             if (!IsLoaded) {
                 Reload();
             }
-            return new ShimmedInstance((ShimInvoker)_domain.CreateInstanceAndUnwrap(_assyName, className));
+            return new ShimmedInstance((ShimInvoker)_domain.CreateInstanceAndUnwrap(_assemblyName, className));
         }
         // Loads the content of a file to a byte array. 
         static byte[] loadFile(string filename) {
@@ -47,20 +51,36 @@ namespace Shiminy {
 
             return buffer;
         }
-        static Assembly MyResolver(object sender, ResolveEventArgs args) {
+
+        private Assembly AssemblyRevolver(object sender, ResolveEventArgs args) {
             AppDomain domain = (AppDomain)sender;
 
-            var path = "";
-            if (args.Name.Contains("Form")) {
-                path = "c:\\Users\\Engineering\\Documents\\Development\\Bommer\\DynamicLoadingTest\\Forms\\bin\\Debug\\Forms.dll";
-            } else if (args.Name.Contains("Thing2")) {
-                path = "c:\\Users\\Engineering\\Documents\\Development\\Bommer\\DynamicLoadingTest\\Thing2\\bin\\Debug\\Thing2.dll";
-            } else {
-                path = "c:\\Users\\Engineering\\Documents\\Development\\Bommer\\DynamicLoadingTest\\Thing1\\bin\\Debug\\Thing1.dll";
+            string assemblyFileName = args.Name;
+            if (!assemblyFileName.EndsWith(".dll")) {
+                assemblyFileName += ".dll";
             }
-            byte[] rawAssembly = loadFile(path);
-            //byte[] rawSymbolStore = loadFile("temp.pdb");
-            Assembly assembly = domain.Load(rawAssembly);
+
+            // Search for the assembly file (assumed to be the same name as the assembly, and a dll) in the search path.
+            Queue<string> frontier = new Queue<string>(_assemblySearchPaths);
+            var path = "";
+            while (frontier.Count > 0) {
+                var next = frontier.Dequeue();
+                var containsAssemblyFile = Directory.GetFiles(next).Any(i => i.EndsWith("\\" + assemblyFileName));
+                if (containsAssemblyFile) {
+                    path = $"{next}\\{assemblyFileName}";
+                    break;
+                }
+                foreach (var child in Directory.GetDirectories(next)) {
+                    frontier.Enqueue(child);
+                }
+            }
+
+            Assembly assembly = null;
+            if (!string.IsNullOrEmpty(path)) {
+                byte[] rawAssembly = loadFile(path);
+                //byte[] rawSymbolStore = loadFile("temp.pdb");
+                assembly = domain.Load(rawAssembly);
+            }
 
             return assembly;
         }
@@ -76,12 +96,13 @@ namespace Shiminy {
                 Unload();
             }
             AppDomainSetup ads = new AppDomainSetup();
-            ads.ApplicationBase = System.Environment.CurrentDirectory; ads.DisallowBindingRedirects = false;
+            ads.ApplicationBase = System.Environment.CurrentDirectory;
+            ads.DisallowBindingRedirects = false;
             ads.DisallowCodeDownload = true;
             ads.ConfigurationFile = AppDomain.CurrentDomain.SetupInformation.ConfigurationFile;
 
             _domain = AppDomain.CreateDomain(_domainName, null, ads);
-            _domain.AssemblyResolve += new ResolveEventHandler(MyResolver);
+            _domain.AssemblyResolve += new ResolveEventHandler(AssemblyRevolver);
 
             AfterLoad?.Invoke(this);
         }
