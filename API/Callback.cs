@@ -1,12 +1,11 @@
-﻿using Shiminy.API;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Forms
-{
-    public class Class1 : Shimmable {
+namespace Shiminy.API {
+    public interface Callback {
+        void Call();
     }
 }

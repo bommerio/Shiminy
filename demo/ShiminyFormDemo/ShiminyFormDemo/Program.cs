@@ -1,4 +1,5 @@
 ﻿using Shiminy;
+using Shiminy.Implementation;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,9 +20,9 @@ namespace DynamicLoadingTest {
             Application.SetCompatibleTextRenderingDefault(false);
 
 #if DEBUG
-            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\Forms\bin\Debug");
+            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\..\Forms\bin\x64\Debug");
 #else
-            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\Forms\bin\Release");
+            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\..\Forms\bin\x64\Release");
 #endif
             _shim = ShiminyFactory.MakeAssemblyShim("Forms");
             _shim.BeforeUnload += new BeforeUnloadDelegate((assm) => {
@@ -29,6 +30,7 @@ namespace DynamicLoadingTest {
             });
             _shim.AfterLoad += new AfterLoadDelegate((assm) => {
                 _form = assm.New("Forms.Form1");
+                assm.New("Forms.Class1");
                 _form.ShowDialog();
             });
             _shim.Load();

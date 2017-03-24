@@ -1,5 +1,6 @@
 ﻿using Shiminy;
 using Shiminy.API;
+using Shiminy.Implementation;
 using System;
 using System.Reflection;
 using System.Windows.Forms;
@@ -16,11 +17,11 @@ namespace Forms {
             InitializeComponent();
             FormClosed += new FormClosedEventHandler((sender, e) => Application.Exit());
 #if DEBUG
-            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\Thing1\bin\Debug");
-            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\Thing2\bin\Debug");
+            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\..\Thing1\bin\x64\Debug");
+            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\..\Thing2\bin\x64\Debug");
 #else
-            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\Thing1\bin\Release");
-            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\Thing2\bin\Release");
+            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\..\Thing1\bin\x64\Release");
+            ShiminyFactory.AddAssemblySearchPath(@"..\..\..\..\Thing2\bin\x64\Release");
 #endif
             _assy = ShiminyFactory.MakeAssemblyShim("Thing1");
             _assy2 = ShiminyFactory.MakeAssemblyShim("Thing2");
@@ -33,6 +34,10 @@ namespace Forms {
         */
         public object Invoke(string name, object[] args) {
             return ShimInvokerImpl.InvokeMember(this, name, args);
+        }
+
+        public object GetInvoker() {
+            return this;
         }
         /*
         public void Set(string name, object value) {

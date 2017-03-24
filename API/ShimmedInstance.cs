@@ -1,12 +1,19 @@
 ﻿using Shiminy.API;
 using System.Dynamic;
+using System.Runtime.Remoting.Messaging;
+using System;
+using Shiminy.API.Messaging;
 
-namespace Shiminy {
+namespace Shiminy.API {
     public class ShimmedInstance : DynamicObject {
         private ShimInvoker _invoker;
 
         public ShimmedInstance(ShimInvoker invoker) {
             _invoker = invoker;
+        }
+
+        public ShimmedInstance(IMessageSink messageSink) {
+            _invoker = new MessageSinkShimInvoker(messageSink);
         }
         /*
         public override bool TryConvert(ConvertBinder binder, out object result) {
