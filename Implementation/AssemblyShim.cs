@@ -7,7 +7,6 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Remoting.Messaging;
 using System.Security.Policy;
-using System.Collections;
 
 namespace Shiminy.Implementation {
 
@@ -25,12 +24,12 @@ namespace Shiminy.Implementation {
         private List<string> _assemblySearchPaths;
         private AppDomain _owningDomain;
         private AppDomain _domain;
+        private bool _managedDomain;
 
         public string AssemblyPath { get; }
 
         public event AfterLoadDelegate AfterLoad;
         public event BeforeUnloadDelegate BeforeUnload;
-        public event FileChangedDelegate OnFileChange;
 
         public bool IsLoaded {
             get {
@@ -46,6 +45,10 @@ namespace Shiminy.Implementation {
             _assemblyName = assemblyName;
             _assemblySearchPaths = new List<string>(assemblySearchPaths);
             AssemblyPath = FindAssembly(new AssemblyName(assemblyName));
+        }
+
+        public void AddAssemblySearchPath(string path) {
+            _assemblySearchPaths.Add(path);
         }
 
         private string FindAssembly(AssemblyName assemblyName) {
@@ -71,26 +74,8 @@ namespace Shiminy.Implementation {
             return path;
         }
 
-        public dynamic New(string className) {
-            if (!IsLoaded) {
-                Reload();
-            }
-            // Throws System.TypeLoadException if it cant find the type.  Let that be thrown to the caller.
-            dynamic wrapped = _domain.CreateInstance(_assemblyName, className);
 
-            try {
-                dynamic obj = wrapped.Unwrap();
-                return obj is IMessageSink ? new ShimmedInstance(obj as IMessageSink) :
-                       obj is ShimInvoker  ? new ShimmedInstance(obj as ShimInvoker) :
-                       obj; // For built in types, we can just return the raw object
-            } catch (System.Runtime.Serialization.SerializationException) {
-                //NOTE: Using Serializable means marshal by value (make an isolated copy),
-                //      Using MarshalByRefObject means that we'll get an object that change state of the actual instantiated object.
-                Debug.Print("Instance instantiated, but cannot unwrap type.  Type must be marked as serializable or extend MarshalByRefObject in order to get the object to return.");
-                return null;
-            }
-        }
-
+        /*
         // Loads the content of a file to a byte array.
         static byte[] loadFile(string filename) {
             FileStream fs = new FileStream(filename, FileMode.Open);
@@ -99,7 +84,7 @@ namespace Shiminy.Implementation {
             fs.Close();
 
             return buffer;
-        }
+        }*/
 
         private Assembly AssemblyResolver(object sender, ResolveEventArgs args) {
             AppDomain domain = (AppDomain)sender;
@@ -107,7 +92,7 @@ namespace Shiminy.Implementation {
             Debug.Print($"Attempting to resolve {args.Name}, requested from {(args.RequestingAssembly != null ? args.RequestingAssembly.FullName : "<none>")}");
             var path = "";
             if (args.Name.Equals(_assemblyName)) {
-                path = AssemblyPath;
+                path = FindAssembly(an);
             } else {
                 path = FindAssembly(an);
                 if (string.IsNullOrEmpty(path)) {
@@ -121,11 +106,7 @@ namespace Shiminy.Implementation {
 
             Assembly assembly = null;
             if (!string.IsNullOrEmpty(path)) {
-                //Assembly.GetAssemblyName
                 assembly = Assembly.LoadFrom(path);
-//                byte[] rawAssembly = loadFile(path);
-                //byte[] rawSymbolStore = loadFile("temp.pdb");
-  //              assembly = domain.Load(rawAssembly);
             }
 
             return assembly;
@@ -135,28 +116,42 @@ namespace Shiminy.Implementation {
             return AppDomain.CurrentDomain.Equals(_domain);
         }
 
-        public void Load() {
+        public dynamic New(string className) {
             if (!IsLoaded) {
                 Reload();
             }
+            // Throws System.TypeLoadException if it cant find the type.  Let that be thrown to the caller.
+            dynamic wrapped = _domain.CreateInstance(_assemblyName, className);
+
+            try {
+                dynamic obj = wrapped.Unwrap();
+                return obj is IMessageSink ? new ShimmedInstance(obj as IMessageSink) :
+                       obj is ShimInvoker ? new ShimmedInstance(obj as ShimInvoker) :
+                       obj; // For built in types, we can just return the raw object
+            } catch (System.Runtime.Serialization.SerializationException) {
+                //NOTE: Using Serializable means marshal by value (make an isolated copy),
+                //      Using MarshalByRefObject means that we'll get an object that change state of the actual instantiated object.
+                Debug.Print("Instance instantiated, but cannot unwrap type.  Type must be marked as serializable or extend MarshalByRefObject in order to get the object to return.");
+                return null;
+            }
         }
 
-        public void Reload() {
-            //TODO: this should work, so that we can pass functions that reload across app domain boundaries.  For now, it doesnt, so we need to work around it.
-/*            if (!_owningDomain.Equals(AppDomain.CurrentDomain)) {
-                _owningDomain.DoCallBack(() => Reload());
-                return;
-            }*/
-            /*
-            if (InLoadedDomain()) {
-                throw new InvalidOperationException("Cannot reload a domain )
-                _owningDomain.
-                ReloadLater = true;
-                return;
-            }*/
+        public void Attach(AppDomain domain) {
+            _domain = domain;
+            _managedDomain = false;
+            _domain.AssemblyResolve += AssemblyResolver;
+            AfterLoad?.Invoke(this);
+        }
+
+        public void Load() {
             if (IsLoaded) {
+                if (!_managedDomain) {
+                    throw new InvalidOperationException("This shim is attached to an app domain it does not manage.  Call Unload to detach the shim before calling Load");
+                }
                 Unload();
             }
+
+            _managedDomain = true;
             AppDomainSetup ads = new AppDomainSetup();
             //FIXME: ApplicationBase must include the referring assembly for _domain.AssemblyResolve to work,
             // but must be pointed at the referred assembly to load dependencies...I think this is ok. -- JR 03/21/17
@@ -168,14 +163,43 @@ namespace Shiminy.Implementation {
 
             Evidence securityInfo = new Evidence();
             _domain = AppDomain.CreateDomain(_domainName, securityInfo, ads);
-            _domain.AssemblyResolve += new ResolveEventHandler(AssemblyResolver);
+            _domain.AssemblyResolve += AssemblyResolver;
 
             AfterLoad?.Invoke(this);
+
+        }
+
+        public void Reload() {
+            if (IsLoaded) {
+                if (!_managedDomain) {
+                    throw new InvalidOperationException("This shim is attached to an app domain it does not manage.  Call Unload to detach the shim before calling Reload");
+                }
+                Unload();
+            }
+            //TODO: this should work, so that we can pass functions that reload across app domain boundaries.  For now, it doesnt, so we need to work around it.
+            /*            if (!_owningDomain.Equals(AppDomain.CurrentDomain)) {
+                            _owningDomain.DoCallBack(() => Reload());
+                            return;
+                        }*/
+            /*
+            if (InLoadedDomain()) {
+                throw new InvalidOperationException("Cannot reload a domain )
+                _owningDomain.
+                ReloadLater = true;
+                return;
+            }*/
+            Unload();
+            Load();
         }
         
         public void Unload() {
-            BeforeUnload?.Invoke(this);
-            AppDomain.Unload(_domain);
+            if (IsLoaded) {
+                BeforeUnload?.Invoke(this);
+                if (_managedDomain) {
+                    AppDomain.Unload(_domain);
+                }
+                _domain = null;
+            }
         }
     }
 }

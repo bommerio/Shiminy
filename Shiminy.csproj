@@ -66,6 +66,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="API\FuncRef.cs" />
     <Compile Include="API\Callback.cs" />
     <Compile Include="API\Messaging\MessageSinkShimInvoker.cs" />
     <Compile Include="API\Messaging\ShimInvokerMessage.cs" />

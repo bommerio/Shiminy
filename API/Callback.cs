@@ -8,4 +8,9 @@ namespace Shiminy.API {
     public interface Callback {
         void Call();
     }
+
+
+    public interface Callback<T> {
+        T Call();
+    }
 }
