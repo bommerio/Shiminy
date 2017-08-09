@@ -13,7 +13,7 @@ namespace Shiminy.API.Messaging {
             _sink = sink;
         }
         public object Invoke(string name, object[] args) {
-            var msg = (ShimInvokerMessage)_sink.SyncProcessMessage(new ShimInvokerMessage(name, args));
+            var msg = _sink.SyncProcessMessage(new ShimInvokerMessage(name, args));
             if (!(msg is ShimInvokerMessage)) {
                 throw new Exception("ShimInvokerMessage response must be a ShimInvokerMessageResponse");
             }

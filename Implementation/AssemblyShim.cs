@@ -44,14 +44,20 @@ namespace Shiminy.Implementation {
             _domainName = assemblyName.ToLower();
             _assemblyName = assemblyName;
             _assemblySearchPaths = new List<string>(assemblySearchPaths);
-            AssemblyPath = FindAssembly(new AssemblyName(assemblyName));
+            AssemblyPath = FindAssembly(new AssemblyName(assemblyName), false);
         }
 
         public void AddAssemblySearchPath(string path) {
             _assemblySearchPaths.Add(path);
         }
 
-        private string FindAssembly(AssemblyName assemblyName) {
+        private bool StrictReferenceMatchesDefinition(AssemblyName reference, AssemblyName definition) {
+            return AssemblyName.ReferenceMatchesDefinition(reference, definition) &&
+                    reference.Version.Equals(definition.Version) &&
+                    Enumerable.SequenceEqual(reference.GetPublicKeyToken(), definition.GetPublicKeyToken());
+
+        }
+        private string FindAssembly(AssemblyName assemblyName, bool strict) {
             string assemblyFileName = assemblyName.Name;
             if (!assemblyFileName.EndsWith(".dll")) {
                 assemblyFileName += ".dll";
@@ -64,8 +70,17 @@ namespace Shiminy.Implementation {
                 var next = frontier.Dequeue();
                 var containsAssemblyFile = Directory.GetFiles(next).Any(i => i.EndsWith("\\" + assemblyFileName));
                 if (containsAssemblyFile) {
-                    path = $"{next}\\{assemblyFileName}";
-                    break;
+                    var candidate = $"{next}\\{assemblyFileName}";
+                    var candidateAN = AssemblyName.GetAssemblyName(candidate);
+                    // Non strict: check that the reference matches definition (which just compares simple name)
+                    // Strict matching: check that they're equal
+                    // Non strict lookup is used in the case where we want the first available assy by a name (dynamic loading through Shiminy)
+                    // Strict is used by the AssemblyResolver to resolve dependencies
+                    if (!strict && AssemblyName.ReferenceMatchesDefinition(candidateAN, assemblyName) ||
+                        strict && StrictReferenceMatchesDefinition(candidateAN, assemblyName)) {
+                        path = candidate;
+                        break;
+                    }
                 }
                 foreach (var child in Directory.GetDirectories(next)) {
                     frontier.Enqueue(child);
@@ -92,14 +107,14 @@ namespace Shiminy.Implementation {
             Debug.Print($"Attempting to resolve {args.Name}, requested from {(args.RequestingAssembly != null ? args.RequestingAssembly.FullName : "<none>")}");
             var path = "";
             if (args.Name.Equals(_assemblyName)) {
-                path = FindAssembly(an);
+                path = FindAssembly(an, false);
             } else {
-                path = FindAssembly(an);
+                path = FindAssembly(an, true);
                 if (string.IsNullOrEmpty(path)) {
                     var index = an.Name.LastIndexOf('.');
                     if (index >= 0 && !an.Name.Substring(index).Equals(".resources")) {
                         an.Name = an.Name.Substring(0, index);
-                        path = FindAssembly(an);
+                        path = FindAssembly(an, true);
                     }
                 }
             }
