@@ -57,8 +57,8 @@ namespace Shiminy.Implementation {
                     Enumerable.SequenceEqual(reference.GetPublicKeyToken(), definition.GetPublicKeyToken());
 
         }
-        private string FindAssembly(AssemblyName assemblyName, bool strict) {
-            string assemblyFileName = assemblyName.Name;
+        private string FindAssembly(AssemblyName target, bool strict) {
+            string assemblyFileName = target.Name;
             if (!assemblyFileName.EndsWith(".dll")) {
                 assemblyFileName += ".dll";
             }
@@ -66,19 +66,19 @@ namespace Shiminy.Implementation {
             // Search for the assembly file (assumed to be the same name as the assembly, and a dll) in the search path.
             Queue<string> frontier = new Queue<string>(_assemblySearchPaths);
             var path = "";
+            Func<string, bool> findFilePred = i => i.EndsWith("\\" + assemblyFileName, StringComparison.InvariantCultureIgnoreCase);
             while (frontier.Count > 0) {
                 var next = frontier.Dequeue();
-                var containsAssemblyFile = Directory.GetFiles(next).Any(i => i.EndsWith("\\" + assemblyFileName));
-                if (containsAssemblyFile) {
-                    var candidate = $"{next}\\{assemblyFileName}";
-                    var candidateAN = AssemblyName.GetAssemblyName(candidate);
+                var foundAssemblyFile = Directory.GetFiles(next).FirstOrDefault(findFilePred);
+                if (foundAssemblyFile != null) {
+                    var candidate = AssemblyName.GetAssemblyName(foundAssemblyFile);
                     // Non strict: check that the reference matches definition (which just compares simple name)
                     // Strict matching: check that they're equal
                     // Non strict lookup is used in the case where we want the first available assy by a name (dynamic loading through Shiminy)
                     // Strict is used by the AssemblyResolver to resolve dependencies
-                    if (!strict && AssemblyName.ReferenceMatchesDefinition(candidateAN, assemblyName) ||
-                        strict && StrictReferenceMatchesDefinition(candidateAN, assemblyName)) {
-                        path = candidate;
+                    if (!strict && AssemblyName.ReferenceMatchesDefinition(candidate, target) ||
+                        strict && StrictReferenceMatchesDefinition(candidate, target)) {
+                        path = foundAssemblyFile;
                         break;
                     }
                 }
@@ -181,7 +181,6 @@ namespace Shiminy.Implementation {
             _domain.AssemblyResolve += AssemblyResolver;
 
             AfterLoad?.Invoke(this);
-
         }
 
         public void Reload() {
