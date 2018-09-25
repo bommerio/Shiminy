@@ -132,11 +132,15 @@ namespace Shiminy.Implementation {
         }
 
         public dynamic New(string className) {
+            return New(className, new object[] { });
+        }
+
+        public dynamic New(string className, params object[] args) {
             if (!IsLoaded) {
                 Reload();
             }
             // Throws System.TypeLoadException if it cant find the type.  Let that be thrown to the caller.
-            dynamic wrapped = _domain.CreateInstance(_assemblyName, className);
+            dynamic wrapped = _domain.CreateInstance(_assemblyName, className, false, BindingFlags.Default, null, args, null, null);
 
             try {
                 dynamic obj = wrapped.Unwrap();
