@@ -25,6 +25,7 @@ namespace Shiminy.Implementation {
         private AppDomain _owningDomain;
         private AppDomain _domain;
         private bool _managedDomain;
+        private bool _shadowCopy;
 
         public string AssemblyPath { get; }
 
@@ -158,11 +159,12 @@ namespace Shiminy.Implementation {
         public void Attach(AppDomain domain) {
             _domain = domain;
             _managedDomain = false;
+            _shadowCopy = false;
             _domain.AssemblyResolve += AssemblyResolver;
             AfterLoad?.Invoke(this);
         }
 
-        public void Load() {
+        public void Load(bool shadowCopy) {
             if (IsLoaded) {
                 if (!_managedDomain) {
                     throw new InvalidOperationException("This shim is attached to an app domain it does not manage.  Call Unload to detach the shim before calling Load");
@@ -171,6 +173,7 @@ namespace Shiminy.Implementation {
             }
 
             _managedDomain = true;
+            _shadowCopy = shadowCopy;
             AppDomainSetup ads = new AppDomainSetup();
             //FIXME: ApplicationBase must include the referring assembly for _domain.AssemblyResolve to work,
             // but must be pointed at the referred assembly to load dependencies...I think this is ok. -- JR 03/21/17
@@ -178,7 +181,7 @@ namespace Shiminy.Implementation {
             ads.DisallowBindingRedirects = false;
             ads.DisallowCodeDownload = true;
             ads.ConfigurationFile = AppDomain.CurrentDomain.SetupInformation.ConfigurationFile;
-            ads.ShadowCopyFiles = "true";
+            ads.ShadowCopyFiles = _shadowCopy.ToString();
 
             Evidence securityInfo = new Evidence();
             _domain = AppDomain.CreateDomain(_domainName, securityInfo, ads);
@@ -207,7 +210,7 @@ namespace Shiminy.Implementation {
                 return;
             }*/
             Unload();
-            Load();
+            Load(_shadowCopy);
         }
         
         public void Unload() {
