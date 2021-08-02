@@ -105,7 +105,7 @@ namespace Shiminy.Implementation {
         private Assembly AssemblyResolver(object sender, ResolveEventArgs args) {
             AppDomain domain = (AppDomain)sender;
             AssemblyName an = new AssemblyName(args.Name);
-            Debug.Print($"Attempting to resolve {args.Name}, requested from {(args.RequestingAssembly != null ? args.RequestingAssembly.FullName : "<none>")}");
+            Debug.Print($"Attempting to resolve {args.Name}, requested from {(args.RequestingAssembly != null ? args.RequestingAssembly.FullName : "<none>")} in app domain {AppDomain.CurrentDomain.FriendlyName}");
             var path = "";
             if (args.Name.Equals(_assemblyName)) {
                 path = FindAssembly(an, false);
