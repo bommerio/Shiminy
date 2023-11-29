@@ -13,4 +13,8 @@ namespace Shiminy.API {
     public interface Callback<T> {
         T Call();
     }
+
+    public interface Callback1<TArg,T> {
+        T Call(TArg arg);
+    }
 }
