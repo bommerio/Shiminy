@@ -58,6 +58,27 @@ namespace Shiminy.Implementation {
                     Enumerable.SequenceEqual(reference.GetPublicKeyToken(), definition.GetPublicKeyToken());
 
         }
+
+        private bool ReferenceMatchesDefinition(AssemblyName reference, AssemblyName definition) {
+            if (!AssemblyName.ReferenceMatchesDefinition(reference, definition)) {
+                return false;
+            }
+            if (definition.Version != null && definition.Version.CompareTo(reference.Version) != 0) {
+                return false;
+            }
+
+            if (definition.GetPublicKeyToken() != null && !Enumerable.SequenceEqual(reference.GetPublicKeyToken(), definition.GetPublicKeyToken())) {
+                return false;
+            }
+            return true;
+
+        }
+        /*
+         *
+                    if (!strict && AssemblyName.ReferenceMatchesDefinition(candidate, target) ||
+                        strict && StrictReferenceMatchesDefinition(candidate, target)) {
+                    }
+         * */
         private string FindAssembly(AssemblyName target, bool strict) {
             string assemblyFileName = target.Name;
             if (!assemblyFileName.EndsWith(".dll")) {
@@ -77,8 +98,7 @@ namespace Shiminy.Implementation {
                     // Strict matching: check that they're equal
                     // Non strict lookup is used in the case where we want the first available assy by a name (dynamic loading through Shiminy)
                     // Strict is used by the AssemblyResolver to resolve dependencies
-                    if (!strict && AssemblyName.ReferenceMatchesDefinition(candidate, target) ||
-                        strict && StrictReferenceMatchesDefinition(candidate, target)) {
+                    if (ReferenceMatchesDefinition(candidate, target)) {
                         path = foundAssemblyFile;
                         break;
                     }
@@ -212,7 +232,7 @@ namespace Shiminy.Implementation {
             Unload();
             Load(_shadowCopy);
         }
-        
+
         public void Unload() {
             if (IsLoaded) {
                 BeforeUnload?.Invoke(this);
