@@ -45,7 +45,7 @@ namespace Shiminy.Implementation {
             _domainName = assemblyName.ToLower();
             _assemblyName = assemblyName;
             _assemblySearchPaths = new List<string>(assemblySearchPaths);
-            AssemblyPath = FindAssembly(new AssemblyName(assemblyName), false);
+            AssemblyPath = FindAssembly(new AssemblyName(assemblyName));
         }
 
         public void AddAssemblySearchPath(string path) {
@@ -59,10 +59,20 @@ namespace Shiminy.Implementation {
 
         }
 
+        /// <summary>
+        /// Check that definition matches a reference, with as much fidelity as is specified
+        /// in the reference.  This means that if reference only contains a name, this will find
+        /// the first definition wherein the name matches.  If it contains a name and a version,
+        /// it will find the first definition that matches on both the name and version, etc.
+        /// </summary>
+        /// <param name="reference"></param>
+        /// <param name="definition"></param>
+        /// <returns></returns>
         private bool ReferenceMatchesDefinition(AssemblyName reference, AssemblyName definition) {
             if (!AssemblyName.ReferenceMatchesDefinition(reference, definition)) {
                 return false;
             }
+
             if (definition.Version != null && definition.Version.CompareTo(reference.Version) != 0) {
                 return false;
             }
@@ -70,16 +80,11 @@ namespace Shiminy.Implementation {
             if (definition.GetPublicKeyToken() != null && !Enumerable.SequenceEqual(reference.GetPublicKeyToken(), definition.GetPublicKeyToken())) {
                 return false;
             }
-            return true;
 
+            return true;
         }
-        /*
-         *
-                    if (!strict && AssemblyName.ReferenceMatchesDefinition(candidate, target) ||
-                        strict && StrictReferenceMatchesDefinition(candidate, target)) {
-                    }
-         * */
-        private string FindAssembly(AssemblyName target, bool strict) {
+
+        private string FindAssembly(AssemblyName target) {
             string assemblyFileName = target.Name;
             if (!assemblyFileName.EndsWith(".dll")) {
                 assemblyFileName += ".dll";
@@ -94,10 +99,6 @@ namespace Shiminy.Implementation {
                 var foundAssemblyFile = Directory.GetFiles(next).FirstOrDefault(findFilePred);
                 if (foundAssemblyFile != null) {
                     var candidate = AssemblyName.GetAssemblyName(foundAssemblyFile);
-                    // Non strict: check that the reference matches definition (which just compares simple name)
-                    // Strict matching: check that they're equal
-                    // Non strict lookup is used in the case where we want the first available assy by a name (dynamic loading through Shiminy)
-                    // Strict is used by the AssemblyResolver to resolve dependencies
                     if (ReferenceMatchesDefinition(candidate, target)) {
                         path = foundAssemblyFile;
                         break;
@@ -126,17 +127,12 @@ namespace Shiminy.Implementation {
             AppDomain domain = (AppDomain)sender;
             AssemblyName an = new AssemblyName(args.Name);
             Debug.Print($"Attempting to resolve {args.Name}, requested from {(args.RequestingAssembly != null ? args.RequestingAssembly.FullName : "<none>")} in app domain {AppDomain.CurrentDomain.FriendlyName}");
-            var path = "";
-            if (args.Name.Equals(_assemblyName)) {
-                path = FindAssembly(an, false);
-            } else {
-                path = FindAssembly(an, true);
-                if (string.IsNullOrEmpty(path)) {
-                    var index = an.Name.LastIndexOf('.');
-                    if (index >= 0 && !an.Name.Substring(index).Equals(".resources")) {
-                        an.Name = an.Name.Substring(0, index);
-                        path = FindAssembly(an, true);
-                    }
+            var path = FindAssembly(an);
+            if (string.IsNullOrEmpty(path)) {
+                var index = an.Name.LastIndexOf('.');
+                if (index >= 0 && !an.Name.Substring(index).Equals(".resources")) {
+                    an.Name = an.Name.Substring(0, index);
+                    path = FindAssembly(an);
                 }
             }
 
